@@ -30,6 +30,14 @@ instance Arrow (Artery m) where
     first (Artery f) = Artery $ \(x, y) cont -> f x $ \x' f' -> cont (x', y) (first f')
     second (Artery f) = Artery $ \(y, x) cont -> f x $ \x' f' -> cont (y, x') (second f')
 
+instance ArrowChoice (Artery m) where
+    left f = f +++ Control.Category.id
+    right f = Control.Category.id +++ f
+    f +++ g = Left <$> f ||| Right <$> g
+    f ||| g = Artery $ \e cont -> case e of
+        Left x -> unArtery f x $ \o f' -> cont o (f' ||| g)
+        Right x -> unArtery g x $ \o g' -> cont o (f ||| g')
+
 instance Functor (Artery m i) where
     fmap f = go where
         go (Artery v) = Artery $ \x cont -> v x $ \a v' -> cont (f a) (go v')
