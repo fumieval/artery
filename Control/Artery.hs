@@ -5,6 +5,7 @@ module Control.Artery (Artery(..)
     , stateful
     , scan
     , scanM
+    , fromList
     , feedback
     , delay1
     , delay
@@ -32,8 +33,11 @@ instance Arrow (Artery m) where
 
 instance ArrowChoice (Artery m) where
     left f = f +++ Control.Category.id
+    {-# INLINE left #-}
     right f = Control.Category.id +++ f
+    {-# INLINE right #-}
     f +++ g = Left <$> f ||| Right <$> g
+    {-# INLINE (+++) #-}
     f ||| g = Artery $ \e cont -> case e of
         Left x -> unArtery f x $ \o f' -> cont o (f' ||| g)
         Right x -> unArtery g x $ \o g' -> cont o (f ||| g')
@@ -59,6 +63,12 @@ instance Strong (Artery m) where
     {-# INLINE first' #-}
     second' = second
     {-# INLINE second' #-}
+
+instance Choice (Artery m) where
+    left' = left
+    {-# INLINE left' #-}
+    right' = right 
+    {-# INLINE right' #-}
 
 instance Num o => Num (Artery m i o) where
     (+) = liftA2 (+)
@@ -126,3 +136,8 @@ delay n d = go 0 (V.replicate n d) where
         | otherwise = succ ix
     go ix buf = Artery $ \i cont -> cont (buf V.! ix) (go (next ix) (V.unsafeUpd buf [(ix, i)]))
 {-# INLINE delay #-}
+
+fromList :: [a] -> Artery m a a
+fromList seq = go seq where
+    go (x:xs) = Artery $ \_ cont -> cont x (go xs)
+    go [] = go seq
