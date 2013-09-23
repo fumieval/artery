@@ -137,7 +137,7 @@ delay n d = go 0 (V.replicate n d) where
     go ix buf = Artery $ \i cont -> cont (buf V.! ix) (go (next ix) (V.unsafeUpd buf [(ix, i)]))
 {-# INLINE delay #-}
 
-fromList :: [a] -> Artery m a a
+fromList :: [a] -> Artery m b a
 fromList seq = go seq where
     go (x:xs) = Artery $ \_ cont -> cont x (go xs)
     go [] = go seq
