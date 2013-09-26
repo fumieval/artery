@@ -141,3 +141,12 @@ fromList :: [a] -> Artery m b a
 fromList seq = go seq where
     go (x:xs) = Artery $ \_ cont -> cont x (go xs)
     go [] = go seq
+
+triggered :: Monoid a => [a] -> Artery m Bool a
+triggered w = go [] where
+    zipLong (x:xs) (y:ys) = mappend x y : zipLong xs ys
+    zipLong xs [] = xs
+    zipLong [] ys = ys
+    go wav = Artery $ \i cont -> case (if i then id else zipLong w) wav of
+        x:xs -> cont x (go xs)
+        _ -> cont mempty (go [])
