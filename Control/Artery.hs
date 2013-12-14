@@ -6,6 +6,7 @@ module Control.Artery (Artery(..)
     , scan
     , scanM
     , fromList
+    , runList
     , feedback
     , delay1
     , delay
@@ -14,7 +15,7 @@ module Control.Artery (Artery(..)
 import qualified Control.Category
 import Control.Arrow
 import Control.Applicative
-import qualified Data.Vector as V
+import qualified Data.Sequence as Seq
 import Data.Monoid
 import Data.Profunctor
 import Control.Monad.Trans.State
@@ -27,7 +28,10 @@ instance Control.Category.Category (Artery m) where
     Artery f . Artery g = Artery $ \x cont -> g x $ \y g' -> f y $ \z f' -> cont z (f' Control.Category.. g')
 
 instance Arrow (Artery m) where
-    arr f = Artery $ \x cont -> cont (f x) (arr f)
+    arr f = let a = Artery $ \x cont -> cont (f x) a in a
+    {-# INLINE arr #-}
+    Artery f *** Artery g = Artery $ \(x, y) cont -> f x $ \x' f' -> g y $ \y' g' -> cont (x', y') (f' *** g')
+    Artery f &&& Artery g = Artery $ \i cont -> f i $ \x f' -> g i $ \y g' -> cont (x, y) (f' &&& g')
     first (Artery f) = Artery $ \(x, y) cont -> f x $ \x' f' -> cont (x', y) (first f')
     second (Artery f) = Artery $ \(y, x) cont -> f x $ \x' f' -> cont (y, x') (second f')
 
@@ -119,28 +123,30 @@ runArtery :: Monad m => Artery m i o -> i -> m (o, Artery m i o)
 runArtery (Artery v) i = v i (curry return)
 {-# INLINE runArtery #-}
 
--- | Analogous to 'loop', but the feedbacked signal is delayed a beat.
+-- | Analogous to 'loop', but the feedback will be delayed a beat.
 feedback :: r -> Artery m (i, r) (o, r) -> Artery m i o
 feedback r (Artery v) = Artery $ \i cont -> v (i, r) $ \(o, r') v' -> cont o (feedback r' v')
 
--- | Delay a beat. The first argument is the default value of the output.
+-- | Delay a beat. The first argument is the default value for the output.
 delay1 :: a -> Artery m a a
 delay1 = scan const
 {-# INLINE delay1 #-}
 
 -- | 'delay n' propagates a signal n beat behind. 
 delay :: Int -> a -> Artery m a a
-delay n d = go 0 (V.replicate n d) where
-    next ix
-        | succ ix == n = 0
-        | otherwise = succ ix
-    go ix buf = Artery $ \i cont -> cont (buf V.! ix) (go (next ix) (V.unsafeUpd buf [(ix, i)]))
+delay n d = go (Seq.replicate n d) where
+    go buf = Artery $ \i cont -> case Seq.viewl buf of
+        a Seq.:< buf' -> cont a $ go $ buf' Seq.|> i
 {-# INLINE delay #-}
 
 fromList :: [a] -> Artery m b a
 fromList seq = go seq where
     go (x:xs) = Artery $ \_ cont -> cont x (go xs)
     go [] = go seq
+
+runList :: Applicative m => Artery m a b -> [a] -> m [b]
+runList ar (x:xs) = unArtery ar x $ \y cont -> (y:) <$> runList cont xs
+runList _ [] = pure []
 
 triggered :: Monoid a => [a] -> Artery m Bool a
 triggered w = go [] where
