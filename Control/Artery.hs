@@ -10,6 +10,7 @@ module Control.Artery (Artery(..)
     , feedback
     , delay1
     , delay
+    , cartridge
     , module Control.Arrow) where
 
 import qualified Control.Category
@@ -19,6 +20,7 @@ import qualified Data.Sequence as Seq
 import Data.Monoid
 import Data.Profunctor
 import Control.Monad.Trans.State
+import Control.Concurrent
 
 -- | 'Artery' is a device that produces a value from the input every beat.
 newtype Artery m i o = Artery { unArtery :: forall r. i -> (o -> Artery m i o -> m r) -> m r }
@@ -148,11 +150,7 @@ runList :: Applicative m => Artery m a b -> [a] -> m [b]
 runList ar (x:xs) = unArtery ar x $ \y cont -> (y:) <$> runList cont xs
 runList _ [] = pure []
 
-triggered :: Monoid a => [a] -> Artery m Bool a
-triggered w = go [] where
-    zipLong (x:xs) (y:ys) = mappend x y : zipLong xs ys
-    zipLong xs [] = xs
-    zipLong [] ys = ys
-    go wav = Artery $ \i cont -> case (if i then id else zipLong w) wav of
-        x:xs -> cont x (go xs)
-        _ -> cont mempty (go [])
+cartridge :: MonadIO m => MVar (Artery m i o) -> Artery m i o
+cartridge ref = go where
+    go = Artery $ \i cont -> liftIO (takeMVar ref)
+        >>= \a -> unArtery a i $ \o a' -> liftIO (putMVar ref a') >> cont o go
