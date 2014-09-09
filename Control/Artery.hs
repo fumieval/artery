@@ -21,6 +21,7 @@ import Data.Monoid
 import Data.Profunctor
 import Control.Monad.Trans.State
 import Control.Concurrent
+import Control.Monad.IO.Class
 
 -- | 'Artery' is a device that produces a value from the input every beat.
 newtype Artery m i o = Artery { unArtery :: forall r. i -> (o -> Artery m i o -> m r) -> m r }
@@ -89,6 +90,12 @@ instance Num o => Num (Artery m i o) where
     {-# INLINE signum #-}
     fromInteger = pure . fromInteger
     {-# INLINE fromInteger #-}
+
+instance Fractional o => Fractional (Artery m i o) where
+    (/) = liftA2 (/)
+    {-# INLINE (/) #-}
+    recip = fmap recip
+    fromRational = pure . fromRational
 
 instance Monoid o => Monoid (Artery m i o) where
     mempty = pure mempty
